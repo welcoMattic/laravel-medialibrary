@@ -1,9 +1,11 @@
-<?php namespace Spatie\MediaLibrary\Commands;
+<?php
+
+namespace Spatie\MediaLibrary\Commands;
 
 use Illuminate\Console\Command;
-use Symfony\Component\Console\Input\InputArgument;
-use Spatie\MediaLibrary\MediaLibraryFacade as MediaLibrary;
-use Spatie\MediaLibrary\Models\Media;
+use Spatie\MediaLibrary\FileManipulator;
+use Spatie\MediaLibrary\Media;
+use Spatie\MediaLibrary\MediaRepository;
 
 class RegenerateCommand extends Command
 {
@@ -12,7 +14,7 @@ class RegenerateCommand extends Command
      *
      * @var string
      */
-    protected $name = 'medialibrary:regenerate';
+    protected $signature = 'medialibrary:regenerate {modelType?}';
 
     /**
      * The console command description.
@@ -21,34 +23,40 @@ class RegenerateCommand extends Command
      */
     protected $description = 'Regenerate the derived images of media';
 
-    public function __construct()
+    /**
+     * @var \Spatie\MediaLibrary\MediaRepository
+     */
+    protected $mediaRepository;
+
+    /**
+     * @var \Spatie\MediaLibrary\FileManipulator
+     */
+    protected $fileManipulator;
+
+    public function __construct(MediaRepository $mediaRepository, FileManipulator $fileManipulator)
     {
         parent::__construct();
+
+        $this->mediaRepository = $mediaRepository;
+        $this->fileManipulator = $fileManipulator;
     }
 
-    public function fire()
+    public function handle()
     {
-        $onlyForModel = ucfirst($this->argument('model'));
-
-        foreach (Media::all() as $media) {
-            if ($onlyForModel == '' || $onlyForModel == $media->content_type) {
-                MediaLibrary::regenerateDerivedFiles($media);
-                $this->info('Media id '.$media->id.' "'.$media->path.'" reprocessed'.' (for '.$media->content_type.' id '.$media->content_id.')');
-            }
-        }
+        $this->getMediaToBeRegenerated()->map(function (Media $media) {
+            $this->fileManipulator->createDerivedFiles($media);
+            $this->info(sprintf('Media %s regenerated', $media->id));
+        });
 
         $this->info('All done!');
     }
 
-    /**
-     * Get the console command arguments.
-     *
-     * @return array
-     */
-    protected function getArguments()
+    public function getMediaToBeRegenerated()
     {
-        return [
-            ['model', InputArgument::OPTIONAL, 'Regenerate only for this model'],
-        ];
+        if ($this->argument('modelType') == '') {
+            return $this->mediaRepository->all();
+        }
+
+        return $this->mediaRepository->getByModelType($this->argument('modelType'));
     }
 }

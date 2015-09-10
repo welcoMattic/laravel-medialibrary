@@ -1,10 +1,9 @@
-<?php namespace Spatie\MediaLibrary;
+<?php
+
+namespace Spatie\MediaLibrary;
 
 use Illuminate\Support\ServiceProvider;
-use Spatie\MediaLibrary\ImageManipulators\GlideImageManipulator;
-use Spatie\MediaLibrary\FileSystems\LocalFileSystem;
-use Spatie\MediaLibrary\FileSystems\FileSystemInterface;
-use Spatie\MediaLibrary\ImageManipulators\ImageManipulatorInterface;
+use Spatie\MediaLibrary\Commands\RegenerateCommand;
 
 class MediaLibraryServiceProvider extends ServiceProvider
 {
@@ -20,17 +19,21 @@ class MediaLibraryServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        // Publish the config file
+        Media::observe(new MediaObserver());
+
         $this->publishes([
-            __DIR__.'/ToPublish/config/laravel-medialibrary.php' => config_path('laravel-medialibrary.php'),
+            __DIR__.'/../resources/config/laravel-medialibrary.php' => $this->app->configPath().'/'.'laravel-medialibrary.php',
         ], 'config');
 
-        // Publish the migration
-        $timestamp = date('Y_m_d_His', time());
+        if (!class_exists('CreateMediaTable')) {
 
-        $this->publishes([
-            __DIR__.'/ToPublish/migrations/create_media_table.php' => base_path('database/migrations/'.$timestamp.'_create_media_table.php'),
-        ], 'migrations');
+            // Publish the migration
+            $timestamp = date('Y_m_d_His', time());
+
+            $this->publishes([
+                __DIR__.'/../resources/migrations/create_media_table.php.stub' => $this->app->basePath().'/'.'database/migrations/'.$timestamp.'_create_media_table.php',
+            ], 'migrations');
+        }
     }
 
     /**
@@ -38,28 +41,12 @@ class MediaLibraryServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        $this->app->bind('mediaLibrary', MediaLibraryRepository::class);
-        $this->app->bind(FileSystemInterface::class, LocalFileSystem::class);
-        $this->app->bind(ImageManipulatorInterface::class, GlideImageManipulator::class);
+        $this->mergeConfigFrom(__DIR__.'/../resources/config/laravel-medialibrary.php', 'laravel-medialibrary');
 
-        $this->app['command.medialibrary:regenerate'] = $this->app->share(
-            function () {
-                return new Commands\RegenerateCommand();
-            }
-        );
+        $this->app->singleton(MediaRepository::class);
+
+        $this->app->bind('command.medialibrary:regenerate', RegenerateCommand::class);
 
         $this->commands(['command.medialibrary:regenerate']);
-    }
-
-    /**
-     * Get the services provided by the provider.
-     *
-     * @return array
-     */
-    public function provides()
-    {
-        return [
-            'command.medialibrary:regenerate',
-        ];
     }
 }
